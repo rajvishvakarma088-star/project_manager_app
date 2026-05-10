@@ -52,6 +52,9 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
     try {
       await context.read<AuthService>().signIn(_email.text, _password.text);
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

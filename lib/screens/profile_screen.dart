@@ -149,7 +149,7 @@ class ProfileScreen extends StatelessWidget {
     try {
       await context.read<AuthService>().signOut();
       if (!context.mounted) return;
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

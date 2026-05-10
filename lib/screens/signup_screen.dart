@@ -83,6 +83,9 @@ class _SignupScreenState extends State<SignupScreen> {
         _password.text,
       );
       await credential.user?.updateDisplayName(_name.text.trim());
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
