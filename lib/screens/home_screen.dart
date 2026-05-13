@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/task_model.dart';
 import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 import '../theme.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/glass_card.dart';
@@ -13,8 +14,28 @@ import '../widgets/task_card.dart';
 import '../widgets/top_bar_button.dart';
 import 'add_edit_task_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final notifService = context.read<NotificationService>();
+        final token = await notifService.getToken();
+        if (token != null) {
+          await context.read<FirestoreService>().updateUserToken(user.uid, token);
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

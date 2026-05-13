@@ -7,6 +7,7 @@ import '../models/task_model.dart';
 import '../services/firestore_service.dart';
 import '../theme.dart';
 import '../widgets/custom_text_field.dart';
+import '../services/notification_service.dart';
 
 Future<void> showAddEditTaskSheet(
   BuildContext context,
@@ -35,6 +36,7 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   DateTime? _date;
+  TimeOfDay? _time;
   String _priority = 'medium';
   String _status = 'pending';
   bool _loading = false;
@@ -48,6 +50,7 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
       _title.text = task.title;
       _description.text = task.description;
       _date = task.date;
+      _time = TimeOfDay.fromDateTime(task.date);
       _priority = task.priority;
       _status = task.status;
     }
@@ -85,8 +88,28 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
     return null;
   }
 
+  String? get _timeError {
+    if (!_submitted) return null;
+    if (_time == null) return 'Time is required';
+    if (_date != null) {
+      final now = DateTime.now();
+      final combined = DateTime(
+        _date!.year,
+        _date!.month,
+        _date!.day,
+        _time!.hour,
+        _time!.minute,
+      );
+      if (combined.isBefore(now)) return 'Time cannot be in the past';
+    }
+    return null;
+  }
+
   bool get _valid =>
-      _titleError == null && _descriptionError == null && _dateError == null;
+      _titleError == null &&
+      _descriptionError == null &&
+      _dateError == null &&
+      _timeError == null;
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -99,6 +122,14 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _time ?? TimeOfDay.now(),
+    );
+    if (picked != null) setState(() => _time = picked);
+  }
+
   Future<void> _save() async {
     setState(() => _submitted = true);
     if (!_valid) return;
@@ -106,18 +137,74 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid ?? widget.uid;
       final now = DateTime.now();
+      final combinedDate = DateTime(
+        _date!.year,
+        _date!.month,
+        _date!.day,
+        _time!.hour,
+        _time!.minute,
+      );
       final task = TaskModel(
         id: widget.task?.id ?? '',
         userId: userId,
         title: _title.text.trim(),
         description: _description.text.trim(),
-        date: _date!,
+        date: combinedDate,
         status: _status,
         priority: _priority,
         createdAt: widget.task?.createdAt ?? now,
       );
       final service = context.read<FirestoreService>();
       if (widget.task == null) {
+        // Schedule notifications FIRST so they work even if Firebase is offline
+        
+        // Show immediate feedback
+        context.read<NotificationService>().showLocalNotification(
+          'Task Created Successfully! 🎉',
+          '${task.title} has been added to your pending tasks.',
+        );
+        
+        // Schedule reminder 30 minutes before the task
+        final scheduledTime = combinedDate.subtract(const Duration(minutes: 30));
+        context.read<NotificationService>().scheduleTaskReminder(
+          'Upcoming Task: ${task.title}',
+          'Your task is due in 30 minutes!',
+          scheduledTime,
+        );
+
+        // Schedule reminder for 9:00 AM on the day of the task IF task is after 9 AM
+        final scheduledTimeMorning = DateTime(
+          task.date.year,
+          task.date.month,
+          task.date.day,
+          9, // 9 AM
+          0,
+        );
+        if (combinedDate.isAfter(scheduledTimeMorning)) {
+          context.read<NotificationService>().scheduleTaskReminder(
+            'Morning Reminder: ${task.title}',
+            'Don\'t forget to complete your task today!',
+            scheduledTimeMorning,
+          );
+        }
+
+        // Schedule reminder for 2:00 PM on the day of the task IF task is after 2 PM
+        final scheduledTimeAfternoon = DateTime(
+          task.date.year,
+          task.date.month,
+          task.date.day,
+          14, // 2 PM
+          0,
+        );
+        if (combinedDate.isAfter(scheduledTimeAfternoon)) {
+          context.read<NotificationService>().scheduleTaskReminder(
+            'Afternoon Reminder: ${task.title}',
+            'Just checking in! Make sure to finish your task.',
+            scheduledTimeAfternoon,
+          );
+        }
+
+        // Now attempt to save to Firebase
         await service.addTask(task);
       } else {
         await service.updateTask(task);
@@ -261,19 +348,56 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _Selector(
-                      label: 'Priority',
-                      value: _priority,
-                      values: const ['low', 'medium', 'high'],
-                      onChanged: (v) => setState(() => _priority = v),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Time *',
+                          style: TextStyle(
+                            color: context.appTextMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        InkWell(
+                          onTap: _pickTime,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 15,
+                            ),
+                            decoration: _fieldDecoration(_timeError != null),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.access_time_rounded,
+                                  size: 17,
+                                  color: AppColors.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _time == null
+                                      ? 'Pick time'
+                                      : _time!.format(context),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              if (_dateError != null) ...[
+              if (_dateError != null || _timeError != null) ...[
                 const SizedBox(height: 6),
                 Text(
-                  _dateError!,
+                  _dateError ?? _timeError!,
                   style: const TextStyle(
                     color: AppColors.error,
                     fontWeight: FontWeight.w700,
@@ -282,11 +406,26 @@ class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
                 ),
               ],
               const SizedBox(height: 18),
-              _Selector(
-                label: 'Status',
-                value: _status,
-                values: const ['pending', 'in_progress', 'completed'],
-                onChanged: (v) => setState(() => _status = v),
+              Row(
+                children: [
+                  Expanded(
+                    child: _Selector(
+                      label: 'Priority',
+                      value: _priority,
+                      values: const ['low', 'medium', 'high'],
+                      onChanged: (v) => setState(() => _priority = v),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Selector(
+                      label: 'Status',
+                      value: _status,
+                      values: const ['pending', 'in_progress', 'completed'],
+                      onChanged: (v) => setState(() => _status = v),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 22),
               DecoratedBox(

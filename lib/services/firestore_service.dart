@@ -59,4 +59,15 @@ class FirestoreService {
       throw Exception('Something went wrong, try again');
     }
   }
+
+  Future<void> updateUserToken(String uid, String token) async {
+    try {
+      await _db.collection('users').doc(uid).set({
+        'fcmToken': token,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // It's okay if this fails silently, we don't want to block the user
+    }
+  }
 }
